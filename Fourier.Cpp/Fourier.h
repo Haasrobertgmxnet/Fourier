@@ -145,9 +145,9 @@ private:
 		unsigned int numberOfCPUCores{ std::thread::hardware_concurrency() };
 		numberOfCPUCores = (numberOfCPUCores > 0) ? numberOfCPUCores : guessOfCPUCores;
 		size_t numberOfElemsPerCPUCore{ numberOfElems / numberOfCPUCores };
-		auto _tmp = std::vector<std::complex<double>>(numberOfElems);
-		size_t M = numberOfElems / 2;
-		size_t K = 2;
+		auto _tmp{ std::vector<std::complex<double>>(numberOfElems) };
+		size_t M{ numberOfElems / 2 };
+		size_t K{ 2 };
 		std::vector<WorkingPackData> workingPackData;
 		workingPackData.reserve(numberOfElemsPerCPUCore);
 
@@ -156,7 +156,7 @@ private:
 			size_t m{ 1 };
 
 			std::vector<WorkingPack> workingPacks;
-			workingPackData.reserve(numberOfCPUCores);
+			workingPacks.reserve(numberOfCPUCores);
 			std::deque<std::packaged_task<bool()>> workingTasks;
 			std::vector<std::future<bool>> workingResults;
 			workingResults.reserve(numberOfCPUCores);
@@ -220,9 +220,9 @@ private:
 		if (_signal.size() != numberOfElems) {
 			return std::vector<std::complex<double>>(0);
 		}
-		auto _tmp = std::vector<std::complex<double>>(numberOfElems);
-		size_t M = numberOfElems / 2;
-		size_t K = 2;
+		auto _tmp{ std::vector<std::complex<double>>(numberOfElems) };
+		size_t M{ numberOfElems / 2 };
+		size_t K{ 2 };
 
 		for (size_t gen = 1; gen <= binExp; gen++) {
 			size_t l = 0;
