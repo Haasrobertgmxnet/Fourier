@@ -1,17 +1,47 @@
+#include <iostream>
+#include <chrono>
+#include <random>
+#include <mutex>
+std::mutex coutMutex;
+
+//#define DEBUG 1
+
 #include "Fourier.h"
-#include <numeric>
+static const unsigned int NUM = 21;
 
 int main() {
-	Fourier f4(2);
-	Fourier f8(3);
-	Fourier f16(4);
+	unsigned int n = std::thread::hardware_concurrency();
+	std::cout << n << " concurrent threads are supported.\n";
+	{
+		size_t ex;
+		std::cout << "Exponent zur Basis zwei eingeben: ";
+		std::cin >> ex;
+		//std::random_device seed;
+		//std::mt19937 engine(seed());
+		std::vector<std::complex<double>> sig(myPow(2, ex));
+		auto sz = sig.size();
+		for (size_t j = 0; j < sig.size(); j+=2) {
+			sig.at(j) = 1.0;
+		}
+		{
+			auto start = std::chrono::system_clock::now();
+			Fourier f(ex, Mode::SingleThreaded);
+			std::vector<std::complex<double>> res = f.Transform(sig);
+			std::chrono::duration<double> dur = std::chrono::system_clock::now() - start;
+			std::cout << "time single-threaded: " << dur.count() << " seconds" << std::endl;
+		}
+		{
+			auto start = std::chrono::system_clock::now();
+			Fourier f(ex, Mode::MultiThreaded);
+			std::vector<std::complex<double>> res = f.Transform(sig);
+			std::chrono::duration<double> dur = std::chrono::system_clock::now() - start;
+			std::cout << "time multi-threaded: " << dur.count() << " seconds" << std::endl;
+		}
+	}
 
 	{
-		unsigned int n = std::thread::hardware_concurrency();
-		std::cout << n << " concurrent threads are supported.\n";
-
 		size_t N{ 3 };
-		Fourier f(N);
+		Fourier f(N, Mode::MultiThreaded);
 
 		std::vector<std::complex<double>> sig(myPow(2, N));
 		auto sz = sig.size();
@@ -38,18 +68,31 @@ int main() {
 	
 	{
 		size_t N{ 2 };
-		Fourier f(N);
+		Fourier f(N, Mode::MultiThreaded);
 
 		std::vector<std::complex<double>> sig(myPow(2, N));
 		auto sz = sig.size();
-		for (auto j = 0; j < sig.size(); j+=2) {
+		for (size_t j = 0; j < sig.size(); j+=2) {
 			sig.at(j) = 1.0;
 			sig.at(1 + j) = 0.0;
 		}
 		std::vector<std::complex<double>> res = f.Transform(sig);
 	}
 
-	std::complex<double> z(1.0, 1.0);
-	double d = 5.0;
-	z = z * d;
+	{
+		size_t N{ 2 };
+		Fourier f(N, Mode::MultiThreaded);
+
+		std::vector<std::complex<double>> sig(myPow(2, N));
+		auto sz = sig.size();
+		for (size_t j = 0; j < sig.size(); j += 2) {
+			sig.at(j) = 1.0;
+			sig.at(1 + j) = 0.0;
+		}
+		std::vector<std::complex<double>> res = f.Transform(sig);
+	}
+
+	std::cout << "Bitte Zeichen eingeben: ";
+	char ch;
+	std::cin >> ch;
 }

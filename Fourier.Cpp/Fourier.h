@@ -1,11 +1,34 @@
 #pragma once
-#define _USE_MATH_DEFINES
+
+//all math stuff
 #include <cmath>
-#include <vector>
 #include <complex>
-#include <iostream>
+
+//std containers
+#include <vector>
+#include <deque>
+#include <memory>
+
+
+//multithreading and async tasks
 #include <future>
 #include <thread>
+
+#ifdef DEBUG
+//Debug output
+#include <iostream>
+#include <mutex>
+extern std::mutex coutMutex;//for std::cout from thread
+#define TESTANWEISUNG(x) x
+#else
+//no output
+#define TESTANWEISUNG(irgendwas) 
+#endif
+
+//pi
+const double Pi = 3.141592653589793238462643383279502884197169399375;
+
+enum class Mode : unsigned int { SingleThreaded, MultiThreaded };
 
 static size_t myPow(size_t x, size_t p)
 {
@@ -18,12 +41,31 @@ static size_t myPow(size_t x, size_t p)
 
 class Fourier
 {
+public:
+	std::function<std::vector<std::complex<double>>(std::vector<std::complex<double>>)> Transform;
+	Fourier(size_t _binExp, Mode _calcMode) :binExp{ _binExp },
+		numberOfElems{ myPow(2,binExp) },
+		calcMode{ _calcMode },
+		sigma{ std::vector<size_t>(numberOfElems) },
+		rootOfUnity{ std::vector<std::complex<double>>(numberOfElems) } {
+		if (calcMode == Mode::SingleThreaded) {
+			Transform = [this](std::vector<std::complex<double>> v) {return TransformST(v); };
+		}
+		if (calcMode == Mode::MultiThreaded) {
+			Transform = [this](std::vector<std::complex<double>> v) {return TransformMT(v); };
+		}
+		BitReversal();
+		AssignRootOfUnity();
+	}
+
+private:
 	size_t binExp{ 2 };
 	size_t numberOfElems{ 4 };
+	Mode calcMode;
 	std::vector<size_t> sigma;
 	std::vector<std::complex<double>> rootOfUnity;
 	bool bitReversalDone{ false };
-
+	
 	void BitReversal() {
 		for (size_t k = 0; k < numberOfElems; ++k) {
 			size_t l{ k };
@@ -41,7 +83,7 @@ class Fourier
 		if (!bitReversalDone) {
 			return;
 		}
-		std::complex<double> zeta{ std::exp(std::complex<double>(0, -2 * M_PI / numberOfElems)) };
+		std::complex<double> zeta{ std::exp(std::complex<double>(0, -2 * Pi / numberOfElems)) };
 		std::complex<double> zpow{ zeta };
 		rootOfUnity.at(0) = std::complex<double>(1.0, 0.0);
 		for (size_t k = 1; k < numberOfElems; ++k) {
@@ -50,15 +92,131 @@ class Fourier
 		}
 	}
 
-public:
-	Fourier(size_t _binExp) :binExp{ _binExp }, numberOfElems{ myPow(2,binExp) } {
-		sigma = std::vector<size_t>(numberOfElems);
-		rootOfUnity = std::vector<std::complex<double>>(numberOfElems);
-		BitReversal();
-		AssignRootOfUnity();
+	struct WorkingPackData {
+		std::complex<double> currentUnitRoot;
+		std::complex<double> sigValue1;
+		std::complex<double> sigValue2;
+		size_t indexSigValue1;
+		size_t indexSigValue2;
+		WorkingPackData() = default;
+		WorkingPackData(std::complex<double> _currentUnitRoot,
+			std::complex<double> _sigValue1,
+			std::complex<double> _sigValue2,
+			size_t _indexSigValue1,
+			size_t _indexSigValue2) :
+			currentUnitRoot{ _currentUnitRoot },
+			sigValue1{ _sigValue1 },
+			sigValue2{ _sigValue2 },
+			indexSigValue1{ _indexSigValue1 },
+			indexSigValue2{ _indexSigValue2 }
+		{}
+	};
+
+	struct WorkingPack {
+		std::shared_ptr<std::vector<WorkingPackData>> workingData;
+		WorkingPack(std::vector<WorkingPackData> _workingData)
+		{
+			workingData.reset(new std::vector<WorkingPackData>(_workingData));
+		}
+		bool operator()() {
+			auto vec{ workingData.get() };
+			for (size_t j = 0; j < vec->size(); ++j) {
+				auto currentData{ vec->at(j) };
+				std::complex<double> u = workingData.get()->at(j).sigValue1;
+				std::complex<double> v = vec->at(j).sigValue2 * currentData.currentUnitRoot;
+				workingData.get()->at(j).sigValue1 = u + v;
+				vec->at(j).sigValue2 = u - v;
+			}
+			TESTANWEISUNG(std::lock_guard<std::mutex> guard(coutMutex); std::cout << "Thread ID: " << std::this_thread::get_id() << std::endl;)
+				return true;
+		}
+	};
+
+	bool _WorkingPackage(std::vector<std::complex<double>>& _signal,
+		size_t K, size_t M, size_t l) {
+		
 	}
 
-	std::vector<std::complex<double>> Transform(std::vector<std::complex<double>> _signal) {
+	std::vector<std::complex<double>> TransformMT(std::vector<std::complex<double>> _signal) {
+		if (_signal.size() != numberOfElems) {
+			return std::vector<std::complex<double>>(0);
+		}
+		unsigned int guessOfCPUCores{ 4 };
+		unsigned int numberOfCPUCores{ std::thread::hardware_concurrency() };
+		numberOfCPUCores = (numberOfCPUCores > 0) ? numberOfCPUCores : guessOfCPUCores;
+		size_t numberOfElemsPerCPUCore{ numberOfElems / numberOfCPUCores };
+		auto _tmp = std::vector<std::complex<double>>(numberOfElems);
+		size_t M = numberOfElems / 2;
+		size_t K = 2;
+		std::vector<WorkingPackData> workingPackData;
+		workingPackData.reserve(numberOfElemsPerCPUCore);
+
+		for (size_t gen = 1; gen <= binExp; ++gen) {
+			size_t l{ 0 };
+			size_t m{ 1 };
+
+			std::vector<WorkingPack> workingPacks;
+			workingPackData.reserve(numberOfCPUCores);
+			std::deque<std::packaged_task<bool()>> workingTasks;
+			std::vector<std::future<bool>> workingResults;
+			workingResults.reserve(numberOfCPUCores);
+
+			for (size_t j = 0; j < K; j += 2) {
+				for (size_t k = l; k < l + M; ++k) {
+					WorkingPackData currentData(rootOfUnity.at(j), _signal.at(k), _signal.at(M + k), k, M + k);
+					workingPackData.emplace_back(std::move(currentData));
+
+					if (2*m == numberOfElemsPerCPUCore) {
+						WorkingPack currentPack(workingPackData);
+						workingPacks.emplace_back(currentPack);
+						std::packaged_task<bool()> currentTask((currentPack));
+						workingTasks.emplace_back(std::move(currentTask));
+						workingResults.emplace_back(workingTasks.back().get_future());
+						workingPackData.clear();
+						m = 0;
+					}
+					m++;
+				}
+				l = l + 2 * M;
+				if (l >= numberOfElems) {
+					break;
+				}
+			}
+
+			while (not workingTasks.empty())
+			{
+				std::packaged_task<bool()> currentTask = std::move(workingTasks.front());
+				workingTasks.pop_front();
+				std::thread fftThread(std::move(currentTask));
+				fftThread.detach();
+			}
+			for (auto& currentResult : workingResults) {
+				bool bl{ currentResult.get() };
+			}
+
+			for (auto currentPack : workingPacks) {
+				//auto vec{ currentPack.workingData.get() };
+				for (size_t j = 0; j < currentPack.workingData.get()->size(); ++j) {
+					auto currentData{ currentPack.workingData.get()->at(j) };
+					size_t index1{ currentData.indexSigValue1 };
+					size_t index2{ currentData.indexSigValue2 };
+					_signal.at(index1) = currentData.sigValue1;
+					_signal.at(index2) = currentData.sigValue2;
+				}
+			}
+
+			M = M / 2;
+			K = 2 * K;
+		}
+
+		for (size_t j = 0; j < numberOfElems; j++) {
+			_tmp.at(j) = _signal.at(sigma.at(j));
+		}
+
+		return _tmp;
+	}
+
+	std::vector<std::complex<double>> TransformST(std::vector<std::complex<double>> _signal) {
 		if (_signal.size() != numberOfElems) {
 			return std::vector<std::complex<double>>(0);
 		}
