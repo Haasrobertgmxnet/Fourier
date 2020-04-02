@@ -10,7 +10,6 @@ std::mutex coutMutex;
 
 int main() {
 	unsigned int n = std::thread::hardware_concurrency();
-	std::cout << n << " concurrent threads are supported.\n";
 	{
 		size_t exNoOfPoints;
 		size_t exNoOfThreads;
@@ -97,7 +96,7 @@ int main() {
 		std::vector<std::complex<decimal>> res = f.Transformation(sig);
 	}
 
-	std::cout << "Pls enter any key: ";
+	std::cout << "Bitte geben Sie ein beliebiges Zeichen ein: ";
 	char ch;
 	std::cin >> ch;
 }
