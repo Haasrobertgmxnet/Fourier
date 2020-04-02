@@ -16,8 +16,7 @@ int main() {
 		std::cout << "Anzahl der Punkte: Exponent zur Basis zwei eingeben: ";
 		std::cin >> exNoOfPoints;
 		std::cout << "Es wird ein 1-0-Signal der Laenge 2 hoch "<< exNoOfPoints <<" erzeugt." << std::endl;
-		//std::random_device seed;
-		//std::mt19937 engine(seed());
+
 		std::vector<std::complex<decimal>> sig(myPow(2, exNoOfPoints));
 		auto sz = sig.size();
 		for (size_t j = 0; j < sig.size(); j+=2) {
